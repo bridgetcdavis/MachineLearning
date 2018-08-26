@@ -1,0 +1,55 @@
+---
+title: "Machine Learning Report"
+author: "Bridget Davis"
+date: "August 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+set.seed(21715)
+library(caret)
+```
+
+## Define the Problem
+
+The data we're using here is fitness data. The interesting part about it is that it has a variable 'classe' that describes how well (of 5 levels) the person did that exercise. There are 160 different variables in this data, and 19,622 entries. That's a lot of information! My goal is to use this information to be able to predict how well someone did an exercise.
+
+I spit my Training data into two sets - one that I will actually use for training, and one used for Cross-Validation. I can use this cross-validation set to test out my model and make alterations before using it on the real Test data.
+
+```{r getData, cache=TRUE}
+pmlFinalTest <- read.csv("pml-testing.csv")
+pmlOther <- read.csv("pml-training.csv")
+inTrain <- createDataPartition(y=pmlOther$classe, p=0.75, list=FALSE)
+pmlTrain <- pmlOther[inTrain,]
+pmlValidate <- pmlOther[-inTrain,]
+```
+
+Unfortunately, we cannot assume that every value is filled in for every entry. Perhaps one person did some of the exercises, but not all others. Or perhaps the data simply didn't get filled out due to a technology issue. I start by removing any columns that have missing information. I then realized that some models rely only on numeric data to train, so I selected only the numeric columns leaving out other descriptive information.
+
+```{r cleanData, cache=TRUE}
+pmlTrainNoNA <- pmlTrain[, colSums(is.na(pmlTrain))==0]
+nums <- unlist(lapply(pmlTrainNoNA, is.numeric))
+nums[(length(nums))] <- TRUE
+pmlTrainNumeric <- pmlTrainNoNA[,nums]
+```
+
+## How I Built My Model
+
+My first idea was to use Random Forest to train my model. It takes a very long time, but I thought if I only used 20% of my data I could train the model well enough in less time. It worked near perfectly for the training set and the validation set. This concerned me. One of the dangers of Random Forest is over-fitting, and this was a clear indicator to me that I had completely overfit my model. Even taking the 4 hours to run Random Forest on the full training set, my model was still too overfit. 
+
+At this point, I began thinking of other possible classification models. My favorite in this set is K-Nearest Neighbors because of how it groups like objects together. KNN seemed to be the way to go after exploring the training and test sets. I included Principal Component Analysis preprocessing to remove correlated columns, and chose the best model based on Kappa instead of Accuracy because it takes both observed and expected accuracy into account.
+
+```{r model, cache=TRUE}
+modelFit <- train(classe~., data=pmlTrainNumeric, method="knn", preProcess="pca", metric="Kappa")
+```
+
+
+## Cross-Validation Predictions and Out-of-Sample Error
+
+Since I set up my training set at the beginning to have a Validation set put aside, I now have a set with which to cross-validate my model. I can make predictions on the Validation set and calulate the accuracy. In this instance I get an accuracy of 97%. Since the validation set is out of the training set, I estimate that my Out-of-Sample Error rate is 3%.
+
+```{r predict, cache=TRUE}
+pred <- predict(modelFit, pmlValidate)
+table(pred, pmlValidate$classe)
+sum(pred==pmlValidate$classe)/length(pred)
+```
